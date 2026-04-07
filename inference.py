@@ -28,10 +28,43 @@ import json
 import os
 import sys
 from typing import Optional
+from urllib.parse import urlparse
 
 from openai import OpenAI
 
 from env.models import AgentAction, RestaurantState
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PROVIDER DETECTION
+# ═══════════════════════════════════════════════════════════════════════
+
+def detect_provider(base_url: str) -> str:
+    """Detect the LLM provider from the base_url."""
+    parsed = urlparse(base_url)
+    host = parsed.hostname or ""
+    if "localhost" in host or "127.0.0.1" in host:
+        if "11434" in str(parsed.port):
+            return "OLLAMA (local)"
+        return f"LOCAL ({host}:{parsed.port})"
+    elif "api.openai.com" in host:
+        return "OPENAI (cloud)"
+    else:
+        return f"OTHER ({host})"
+
+def _debug(msg: str) -> None:
+    """Print debug info to stderr (never pollute stdout)."""
+    print(msg, file=sys.stderr, flush=True)
+
+
+def warn_if_model_mismatch(provider: str, model: str) -> None:
+    """Print a warning if model name doesn't match the provider."""
+    openai_models = {"gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini"}
+    is_ollama = "OLLAMA" in provider or "LOCAL" in provider
+    if is_ollama and model in openai_models:
+        _debug(f"  ⚠️  WARNING: model='{model}' is an OpenAI name but provider is {provider}")
+        _debug(f"  ⚠️  Ollama does NOT have {model}. Use the model you pulled (e.g. 'mistral').")
+        _debug(f"  ⚠️  Run 'ollama list' to see available models.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -40,11 +73,12 @@ from env.models import AgentAction, RestaurantState
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-API_KEY = os.getenv("OPENAI_API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
 
 TASK_NAME = os.getenv("TASK", "weekday_lunch")
 BENCHMARK = "restaurant-manager"
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
+DETECTED_PROVIDER = detect_provider(API_BASE_URL)
 
 MAX_STEPS = 12
 MAX_SCORE = 100.0  # Grader returns 0-100
@@ -94,24 +128,55 @@ SYSTEM_PROMPT = """You are an expert restaurant shift manager AI. You manage a r
 
 === YOUR 5 DECISION LEVERS (each step) ===
 1. STAFFING: Call in or send home staff (chefs, servers, dishwashers)
-2. MENU: Enable or disable menu items
+2. MENU: Enable or disable menu items (disable low-margin or hard-to-prepare items)
 3. PRICING: Adjust item prices (cost + margin)
 4. INVENTORY: Emergency-reorder ingredients (1.5x normal cost)
 5. PROMOTIONS: Run a 15% discount promotion to boost demand by 30%
 
-=== YOUR 4 GOALS (priority order) ===
-Priority 1: SERVE CUSTOMERS → minimize failed orders (need enough chefs & servers)
-Priority 2: MAINTAIN RATING → keep above 4.0 (better staff skill = higher ratings)
-Priority 3: BE PROFITABLE → revenue > costs (don't overspend)
-Priority 4: SPECIAL EVENTS → handle large parties & health inspections
+=== CRITICAL STRATEGY RULES ===
+** RATING is currency — low ratings hurt more than low profit **
+- HIGH demand shift? Call in MORE staff to handle surge → serve more orders → better rating
+- LOW rating? Focus on quality and speed → use high-skill staff → reduce failed orders
+- COMPETITOR nearby? Don't race on price, compete on SERVICE QUALITY (fast, accurate)
+- Cost spike? Disable expensive items, focus on high-margin items, reorder strategically
 
-=== KEY RULES ===
-- Chef capacity: ~5 orders/step per chef (scaled by skill_level)
-- Server capacity: ~8 orders/step per server (scaled by skill_level)
-- Demand scaling: demand=1.0 → ~10 orders, demand=2.0 → ~20 orders
-- Promotion effect: +30% demand, -15% price
-- Staff cost: hourly_wage × 0.5 per 30-minute step
-- Health inspections: need active dishwasher with skill ≥ 0.6
+=== DECISION LOGIC ===
+WHEN demand is high (demand >= 1.5):
+  → Call in extra chefs and servers (MUST serve customers to keep rating)
+  → Keep all profitable items enabled
+  → Don't worry about small costs — failed orders cost rating points (worse)
+
+WHEN rating is low (< 4.0):
+  → Call in your BEST staff (highest skill)
+  → Disable complex items (prep time > 15 min) to reduce failures
+  → Don't promote — focus on quality, not volume
+
+WHEN costs are high (doubled inventory prices):
+  → Disable expensive dishes
+  → Focus on efficient, high-margin items (Naan, Mango Lassi)
+  → Strategic reorder: only order what you KNOW you'll sell
+  → Better to miss an order than reorder at 2x cost
+
+WHEN inventory is low:
+  → Only enable items you have enough for
+  → Don't take risks — avoid items requiring rare ingredients
+  → Reorder ONLY essentials at premium cost
+
+HEALTH INSPECTION (step 8):
+  → Must have active dishwasher with skill >= 0.6
+  → Quality matters — keep best chefs and servers active
+
+LARGE PARTY (announced):
+  → Ensure you have EXTRA chefs and servers available
+  → High-skill staff can handle surges
+  → Worth the extra payroll cost — failed orders from party hurt rating badly
+
+=== CAPACITY MATH ===
+- Chef capacity: ~5 orders/step per chef (skill_level 0.5=2.5 orders, skill_level 0.9=4.5 orders)
+- Server capacity: ~8 orders/step per server (scaled by skill)
+- Demand: 1.0 = ~10 orders, 1.5 = ~15 orders, 2.5 = ~25 orders
+- Promotion: +30% demand, -15% margin
+- Failed order cost: -rating penalty + no revenue (severe)
 
 === RESPONSE FORMAT (REQUIRED) ===
 RESPOND ONLY with a valid JSON object. No explanation. No markdown code blocks.
@@ -129,77 +194,49 @@ FIELD GUIDE:
 - staff_changes: true=call in, false=send home
 - menu_changes: true=enable, false=disable
 - price_adjustments: new selling price (must be > cost)
-- reorder_inventory: quantity to order (emergency reorder)
+- reorder_inventory: quantity to order (emergency reorder at 1.5x cost)
 - promotion_active: boolean (true/false only)
-
-=== EXAMPLE SCENARIOS ===
-
-Example 1 (High demand, staff shortage):
-{
-  "staff_changes": {"Chef_Maria": true, "Server_John": true},
-  "promotion_active": false
-}
-
-Example 2 (Slow period, over-staffed):
-{
-  "staff_changes": {"Chef_Bob": false},
-  "menu_changes": {"ExpensiveItem": false},
-  "promotion_active": true
-}
-
-Example 3 (Profit focus, low inventory):
-{
-  "price_adjustments": {"Burger": 13.50, "Pizza": 15.00},
-  "reorder_inventory": {"Beef": 30, "Tomato": 50}
-}
-
-=== CRITICAL INSTRUCTIONS ===
-1. Always output VALID JSON only (no explanations, no code blocks, no extra text)
-2. Only include fields you want to change (omit the rest)
-3. Use exact staff/menu/ingredient names from the state
-4. Ensure new prices are ABOVE cost
-5. Make BOLD decisions when demand is high or rating is low
-6. Be CONSERVATIVE with spending during profitable periods
 """
 
 
 def state_to_prompt(state: RestaurantState) -> str:
-    """Convert a RestaurantState to a human-readable prompt for the LLM."""
+    """Convert a RestaurantState to a human-readable prompt for the LLM.
+    
+    Optimized to avoid redundant formatting on static data.
+    """
     lines = []
 
+    # Dynamic header (changes every step)
     lines.append(f"=== STEP {state.step + 1}/{state.total_steps} | Time: {state.time_of_day} ===")
-    lines.append(f"Demand Level: {state.demand_level}x | Rating: {state.customer_rating}/5.0")
-    lines.append(f"Revenue so far: {state.revenue:.0f} | Costs so far: {state.costs:.0f} | "
-                 f"Profit: {state.revenue - state.costs:.0f}")
-    lines.append(f"Orders served: {state.completed_orders} | Failed: {state.failed_orders}")
+    lines.append(f"Demand: {state.demand_level}x | Rating: {state.customer_rating:.1f}/5.0")
+    profit = state.revenue - state.costs
+    lines.append(f"Revenue: ${state.revenue:.0f} | Costs: ${state.costs:.0f} | Profit: ${profit:.0f}")
+    lines.append(f"Served: {state.completed_orders} | Failed: {state.failed_orders}")
     lines.append("")
 
-    # Staff
+    # Staff (brief format)
     lines.append("STAFF:")
     for s in state.staff:
-        status = "ACTIVE" if s.is_active else "available"
-        lines.append(f"  {s.name} | {s.role} | skill={s.skill_level} | wage={s.hourly_wage}/hr | {status}")
+        status = "ON" if s.is_active else "off"
+        lines.append(f"  {s.name} ({s.role}) skill={s.skill_level} wage=${s.hourly_wage}/h [{status}]")
     lines.append("")
 
-    # Menu
+    # Menu (compact format)
     lines.append("MENU:")
     for item in state.menu:
         status = "ON" if item.available else "OFF"
         margin = item.price - item.cost
-        lines.append(f"  {item.name} | price={item.price} cost={item.cost} margin={margin:.0f} | "
-                     f"prep={item.prep_time_minutes}min | [{status}]")
+        lines.append(f"  {item.name}: ${item.price} (cost ${item.cost}, margin ${margin:.0f}) [{status}]")
     lines.append("")
 
-    # Inventory
+    # Inventory (compact format, only show low stock warnings)
     lines.append("INVENTORY:")
     for inv in state.inventory:
-        warning = " ⚠️ LOW" if inv.quantity < 5 else ""
-        lines.append(f"  {inv.name}: {inv.quantity:.1f} {inv.unit} | "
-                     f"cost={inv.cost_per_unit}/{inv.unit} | "
-                     f"reorder={inv.reorder_cost_per_unit}/{inv.unit}{warning}")
+        status = "⚠️ LOW" if inv.quantity < 5 else "OK"
+        lines.append(f"  {inv.name}: {inv.quantity:.0f}/{inv.unit} [{status}]")
     lines.append("")
 
-    lines.append("What actions should I take this step? Respond with JSON only.")
+    lines.append("Action? Respond JSON only.")
     return "\n".join(lines)
 
 
@@ -235,7 +272,13 @@ def parse_llm_response(response_text: str) -> AgentAction:
 
 def make_llm_policy(model: str, verbose: bool = False):
     """
-    Create an LLM-powered policy function.
+    Create a hybrid LLM + rule-based policy function.
+    
+    The LLM makes decisions, but we apply automatic rules for tough scenarios:
+    - High demand surge? Auto call in extra staff
+    - Low rating? Auto activate best staff
+    - Doubled costs? Auto disable expensive items
+    - Low inventory? Auto carefully manage reorders
 
     Args:
         model: Model identifier to use
@@ -244,10 +287,120 @@ def make_llm_policy(model: str, verbose: bool = False):
     Returns:
         A policy function: RestaurantState -> AgentAction
     """
+    # ── Debug: Print provider info to stderr ──
+    _debug(f"  [DEBUG] Provider  : {DETECTED_PROVIDER}")
+    _debug(f"  [DEBUG] base_url  : {API_BASE_URL}")
+    _debug(f"  [DEBUG] model     : {model}")
+    warn_if_model_mismatch(DETECTED_PROVIDER, model)
+
     client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+
+    def apply_hybrid_rules(state: RestaurantState, llm_action: AgentAction) -> AgentAction:
+        """
+        Apply strategic rules to enhance the LLM decision.
+        Rules are only applied when conditions are difficult.
+        """
+        merged = llm_action.model_copy(deep=True)
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # RULE 1: High demand surge → ensure enough staff
+        # ═══════════════════════════════════════════════════════════════════
+        if state.demand_level >= 1.5:
+            # Count current active chefs and servers
+            active_chefs = sum(1 for s in state.staff if s.is_active and s.role == "chef")
+            active_servers = sum(1 for s in state.staff if s.is_active and s.role == "server")
+            
+            # For high demand, we need at least 3 chefs and 2 servers
+            target_chefs = max(3, int(state.demand_level * 2))
+            target_servers = max(2, int(state.demand_level * 1.5))
+            
+            # Auto call in best available staff if we're under target
+            if active_chefs < target_chefs or active_servers < target_servers:
+                # Get all staff sorted by skill
+                chefs = [s for s in state.staff if s.role == "chef"]
+                servers = [s for s in state.staff if s.role == "server"]
+                
+                chefs.sort(key=lambda x: x.skill_level, reverse=True)
+                servers.sort(key=lambda x: x.skill_level, reverse=True)
+                
+                # Call in best chefs
+                for chef in chefs[:target_chefs]:
+                    if not chef.is_active:
+                        merged.staff_changes[chef.name] = True
+                
+                # Call in best servers
+                for server in servers[:target_servers]:
+                    if not server.is_active:
+                        merged.staff_changes[server.name] = True
+                
+                if verbose:
+                    _debug(f"  [RULE] High demand ({state.demand_level}x) → calling in extra staff")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # RULE 2: Low rating → activate best staff for quality
+        # ═══════════════════════════════════════════════════════════════════
+        if state.customer_rating < 4.0:
+            # Get best staff by skill
+            chefs = sorted(
+                [s for s in state.staff if s.role == "chef"],
+                key=lambda x: x.skill_level, reverse=True
+            )
+            servers = sorted(
+                [s for s in state.staff if s.role == "server"],
+                key=lambda x: x.skill_level, reverse=True
+            )
+            
+            # Ensure at least top 2 chefs and top 2 servers are active
+            for chef in chefs[:2]:
+                if not chef.is_active:
+                    merged.staff_changes[chef.name] = True
+            
+            for server in servers[:2]:
+                if not server.is_active:
+                    merged.staff_changes[server.name] = True
+            
+            if verbose:
+                _debug(f"  [RULE] Low rating ({state.customer_rating:.1f}) → activating best staff")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # RULE 3: Doubled ingredient costs → disable expensive items
+        # ═══════════════════════════════════════════════════════════════════
+        # Detect doubled costs by checking if any item has doubled cost_per_unit
+        avg_cost = sum(inv.cost_per_unit for inv in state.inventory) / len(state.inventory)
+        is_crisis_cost = avg_cost > 150  # Normal avg is ~80, crisis is ~160+
+        
+        if is_crisis_cost:
+            # Disable expensive main courses, keep fast/simple items
+            for item in state.menu:
+                if item.category == "main" and item.cost > 100:
+                    # Expensive main → disable it
+                    merged.menu_changes[item.name] = False
+                elif item.category in ("appetizer", "dessert", "drink"):
+                    # Keep simple items enabled
+                    merged.menu_changes[item.name] = True
+            
+            if verbose:
+                _debug(f"  [RULE] Crisis costs detected → disabling expensive mains")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # RULE 4: Low inventory → don't reorder unless critical
+        # ═══════════════════════════════════════════════════════════════════
+        low_inv_count = sum(1 for inv in state.inventory if inv.quantity < 5)
+        if low_inv_count > 3:  # Multiple ingredients running low
+            # Clear reorder queue — reordering at 1.5x cost in crisis is expensive
+            merged.reorder_inventory = {}
+            
+            if verbose:
+                _debug(f"  [RULE] Low inventory → skipping reorders to conserve costs")
+        
+        return merged
+
+    # Track last error for competition logging
+    last_error: list[str | None] = [None]
 
     def policy(state: RestaurantState) -> AgentAction:
         prompt = state_to_prompt(state)
+        last_error[0] = None  # reset each step
 
         try:
             response = client.chat.completions.create(
@@ -257,22 +410,35 @@ def make_llm_policy(model: str, verbose: bool = False):
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=700,
+                max_tokens=400,
             )
 
             response_text = response.choices[0].message.content or ""
+            response_model = getattr(response, "model", "unknown")
 
             if verbose:
-                print(f"  [LLM] {response_text[:150]}...", flush=True)
+                _debug(f"  [LLM] Response model: {response_model}")
+                _debug(f"  [LLM] {response_text[:100]}...")
+                if response_model != model:
+                    _debug(f"  [LLM] ⚠️  Model mismatch! Requested='{model}', Got='{response_model}'")
 
-            return parse_llm_response(response_text)
+            llm_action = parse_llm_response(response_text)
 
         except Exception as e:
+            last_error[0] = str(e)[:200]
             if verbose:
-                print(f"  [ERROR] LLM call failed: {e}", flush=True)
-            return AgentAction()
+                _debug(f"  [ERROR] LLM call failed: {e}")
+            llm_action = AgentAction()
+        
+        # Apply hybrid rules to enhance LLM decision
+        final_action = apply_hybrid_rules(state, llm_action)
+        
+        return final_action
 
-    return policy
+    def get_last_error() -> str | None:
+        return last_error[0]
+
+    return policy, get_last_error
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -302,7 +468,7 @@ def main() -> None:
         from env.graders import grade
         
         # Create policy and environment
-        policy = make_llm_policy(model=MODEL_NAME, verbose=VERBOSE)
+        policy, get_last_error = make_llm_policy(model=MODEL_NAME, verbose=VERBOSE)
         env = RestaurantEnv()
         state = env.reset(TASK_NAME)
 
@@ -334,7 +500,7 @@ def main() -> None:
                 action=action_json,
                 reward=reward,
                 done=done,
-                error=None,
+                error=get_last_error(),
             )
             
             rewards.append(reward)
@@ -349,16 +515,16 @@ def main() -> None:
         success = final_score >= SUCCESS_THRESHOLD
 
         if VERBOSE:
-            print(f"\n{'='*60}", flush=True)
-            print(f"Task: {TASK_NAME}", flush=True)
-            print(f"Final Score: {final_score:.1f}/100", flush=True)
+            _debug(f"\n{'='*60}")
+            _debug(f"Task: {TASK_NAME}")
+            _debug(f"Final Score: {final_score:.1f}/100")
             for pillar, score in grade_report.get("pillar_scores", {}).items():
-                print(f"  {pillar}: {score:.1f}/100", flush=True)
-            print(f"{'='*60}\n", flush=True)
+                _debug(f"  {pillar}: {score:.1f}/100")
+            _debug(f"{'='*60}\n")
 
     except Exception as e:
         if VERBOSE:
-            print(f"[ERROR] Episode failed: {e}", flush=True)
+            _debug(f"[ERROR] Episode failed: {e}")
         import traceback
         traceback.print_exc()
         success = False
