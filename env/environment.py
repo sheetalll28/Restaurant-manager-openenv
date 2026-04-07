@@ -199,6 +199,20 @@ class RestaurantEnv:
         return state, reward, done, info
 
     # ═══════════════════════════════════════════════════════════════════
+    # STATE — current observation (OpenEnv spec)
+    # ═══════════════════════════════════════════════════════════════════
+
+    def state(self) -> RestaurantState:
+        """
+        Return the current restaurant state observation.
+
+        Required by the OpenEnv spec. Can be called at any time after reset().
+        """
+        if not self._is_reset:
+            raise RuntimeError("Must call reset() before state().")
+        return self._build_state()
+
+    # ═══════════════════════════════════════════════════════════════════
     # GET RESULT — end-of-shift summary
     # ═══════════════════════════════════════════════════════════════════
 
@@ -496,7 +510,9 @@ class RestaurantEnv:
           - Profit (normalized) — 40%
           - Rating quality      — 30%
           - Service success     — 30%
-
+          
+        PENALITY: If service rate is poor (many failed orders), apply exponential penalty.
+        
         This is NOT the final grade. It's a per-step signal the agent
         can use to learn which actions are working.
         """
@@ -508,13 +524,26 @@ class RestaurantEnv:
 
         # Service component
         total = served + failed
-        service_score = served / total if total > 0 else 0.5
+        if total > 0:
+            service_score = served / total
+            failure_rate = failed / total
+        else:
+            service_score = 0.5
+            failure_rate = 0.0
 
         reward = (
             0.4 * profit_score
             + 0.3 * rating_score
             + 0.3 * service_score
         )
+        
+        # Apply exponential penalty for high failure rate
+        # failure_rate=0 → no penalty (multiplier=1.0)
+        # failure_rate=0.5 → 29% penalty (multiplier=0.707)
+        # failure_rate=1.0 → 100% penalty (multiplier=0.0)
+        failure_penalty_multiplier = (1.0 - failure_rate) ** 1.5
+        reward = reward * failure_penalty_multiplier
+        
         return round(reward, 4)
 
     # ═══════════════════════════════════════════════════════════════════
