@@ -1,0 +1,100 @@
+# OpenEnv Environment Specification
+# Restaurant Manager — AI-driven restaurant shift management
+
+name: restaurant-manager
+version: "1.0.0"
+description: >
+  A restaurant shift management environment where an AI agent makes real-time
+  decisions about staffing, menu availability, pricing, inventory reorders, and
+  promotions to maximize profit while maintaining customer satisfaction and
+  service quality across a 12-step shift.
+
+# ── Observation / Action / Reward types ──────────────────────────────────
+
+observation:
+  type: object
+  model: env.models.RestaurantState
+  description: >
+    Full restaurant state including step number, time, demand level,
+    customer rating, revenue, costs, active orders, staff roster,
+    menu items, and inventory levels.
+
+action:
+  type: object
+  model: env.models.AgentAction
+  description: >
+    Manager decisions: staff_changes (call in/send home), menu_changes
+    (enable/disable items), price_adjustments, reorder_inventory
+    (emergency orders at 1.5x cost), and promotion_active (15% discount).
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  description: >
+    Per-step reward combining profit (40%), customer rating (30%), and
+    service success rate (30%), with exponential penalty for high failure
+    rates. Dense signal; available every step.
+
+# ── Tasks ────────────────────────────────────────────────────────────────
+
+tasks:
+  - id: weekday_lunch
+    name: Weekday Lunch Service
+    description: >
+      Stable weekday lunch shift with normal demand (1.0x), full inventory,
+      and good starting rating (4.3). The agent manages a smooth service.
+    difficulty: easy
+    max_steps: 12
+
+  - id: weekend_rush
+    name: Weekend Festival Rush
+    description: >
+      High-demand weekend shift (up to 2.5x) with a low starting rating
+      (3.5) and a large party arriving at step 4. Best chef is unavailable.
+      Agent must handle surge demand while improving satisfaction.
+    difficulty: medium
+    max_steps: 12
+
+  - id: crisis_shift
+    name: Crisis Management Shift
+    description: >
+      Ingredient costs doubled, low starting inventory (40% of normal),
+      health inspection at step 8, and competitor pressure reducing demand.
+      Agent must manage finances, quality, and regulatory compliance.
+    difficulty: hard
+    max_steps: 12
+
+# ── Environment configuration ────────────────────────────────────────────
+
+environment:
+  module: env.environment
+  class: RestaurantEnv
+  methods:
+    reset: "reset(task_id: str) -> RestaurantState"
+    step: "step(action: AgentAction) -> tuple[RestaurantState, float, bool, dict]"
+    state: "state() -> RestaurantState"
+
+# ── Inference configuration ──────────────────────────────────────────────
+
+inference:
+  script: inference.py
+  env_vars:
+    - API_BASE_URL
+    - MODEL_NAME
+    - OPENAI_API_KEY
+    - HF_TOKEN
+    - TASK
+    - VERBOSE
+
+# ── Grading ──────────────────────────────────────────────────────────────
+
+grading:
+  module: env.graders
+  function: grade
+  score_range: [0.0, 1.0]
+  deterministic: true
+  pillars:
+    - profit
+    - rating
+    - service
+    - satisfaction
