@@ -1,29 +1,89 @@
 """
-AI agent for the restaurant management environment.
+Uses OpenAI API to make management decisions based on restaurant state.
 
-Uses OpenAI's API to make management decisions based on the current
-restaurant state. This is the main hackathon deliverable.
+MANDATORY ENVIRONMENT VARIABLES:
+    API_BASE_URL    LLM API endpoint (default: OpenAI)
+    MODEL_NAME      Model identifier (default: gpt-4o-mini)
+    OPENAI_API_KEY  API authentication key
+
+OPTIONAL:
+    TASK            Task to run (default: weekday_lunch)
+    VERBOSE         Show detailed output (default: false)
+
+STDOUT FORMAT (Competition-compliant):
+    [START] task=<task> env=restaurant-manager model=<model>
+    [STEP]  step=<n> action=<json> reward=<0.00> done=<true|false> error=<null>
+    [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...,rn>
 
 Usage:
-    python inference.py                          # runs all 3 tasks
-    python inference.py --task weekday_lunch      # runs one task
-    python inference.py --task weekday_lunch --verbose  # detailed output
-
-Requires:
-    OPENAI_API_KEY environment variable to be set.
+    python inference_competition.py                # Uses environment variables
+    TASK=weekday_lunch python inference_competition.py # Set task via env var
+    MODEL_NAME=gpt-4o python inference_competition.py  # Override model
+    VERBOSE=true python inference_competition.py       # Show detailed output
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import sys
+from typing import Optional
 
 from openai import OpenAI
 
 from env.models import AgentAction, RestaurantState
-from env.simulation import run_episode
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CONFIGURATION (from environment or defaults)
+# ═══════════════════════════════════════════════════════════════════════
+
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+API_KEY = os.getenv("OPENAI_API_KEY")
+
+TASK_NAME = os.getenv("TASK", "weekday_lunch")
+BENCHMARK = "restaurant-manager"
+VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
+
+MAX_STEPS = 12
+MAX_SCORE = 100.0  # Grader returns 0-100
+SUCCESS_THRESHOLD = 65.0  # Need 65/100 to pass
+
+# ═══════════════════════════════════════════════════════════════════════
+# LOGGING FUNCTIONS (Competition format)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def log_start(task: str, env: str, model: str) -> None:
+    """Log episode start in competition format."""
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(
+    step: int,
+    action: str,
+    reward: float,
+    done: bool,
+    error: Optional[str],
+) -> None:
+    """Log step completion in competition format."""
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    """Log episode end in competition format."""
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    score_normalized = score / MAX_SCORE  # Normalize to [0, 1]
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score_normalized:.3f} rewards={rewards_str}",
+        flush=True,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -145,16 +205,15 @@ def state_to_prompt(state: RestaurantState) -> str:
 
 def parse_llm_response(response_text: str) -> AgentAction:
     """Parse the LLM's JSON response into an AgentAction."""
-    # Clean and extract JSON from the response
     text = response_text.strip()
 
-    # Handle markdown code blocks (```json...``` or ```...```)
+    # Handle markdown code blocks
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0].strip()
     elif "```" in text:
         text = text.split("```")[1].split("```")[0].strip()
     
-    # Try to find JSON object (handles text before/after JSON)
+    # Extract JSON object
     if "{" in text and "}" in text:
         start = text.find("{")
         end = text.rfind("}") + 1
@@ -164,9 +223,8 @@ def parse_llm_response(response_text: str) -> AgentAction:
         data = json.loads(text)
         return AgentAction(**data)
     except (json.JSONDecodeError, Exception) as e:
-        # If parsing fails, return a do-nothing action
-        print(f"  [WARNING] Failed to parse LLM response: {e}")
-        print(f"  [DEBUG] Extracted text: {text[:200]}")
+        if VERBOSE:
+            print(f"  [WARNING] Failed to parse LLM response: {e}", flush=True)
         return AgentAction()
 
 
@@ -175,19 +233,18 @@ def parse_llm_response(response_text: str) -> AgentAction:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def make_llm_policy(model: str = "gpt-4o-mini", verbose: bool = False):
+def make_llm_policy(model: str, verbose: bool = False):
     """
     Create an LLM-powered policy function.
 
     Args:
-        model: OpenAI model name (default: gpt-4o-mini)
+        model: Model identifier to use
         verbose: if True, print LLM responses
 
     Returns:
         A policy function: RestaurantState -> AgentAction
     """
-    # Configure OpenAI (reads OPENAI_API_KEY from environment)
-    client = OpenAI()
+    client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
     def policy(state: RestaurantState) -> AgentAction:
         prompt = state_to_prompt(state)
@@ -206,13 +263,14 @@ def make_llm_policy(model: str = "gpt-4o-mini", verbose: bool = False):
             response_text = response.choices[0].message.content or ""
 
             if verbose:
-                print(f"  [LLM] {response_text[:150]}...")
+                print(f"  [LLM] {response_text[:150]}...", flush=True)
 
             return parse_llm_response(response_text)
 
         except Exception as e:
-            print(f"  [ERROR] LLM call failed: {e}")
-            return AgentAction()  # fallback: do nothing
+            if verbose:
+                print(f"  [ERROR] LLM call failed: {e}", flush=True)
+            return AgentAction()
 
     return policy
 
@@ -222,59 +280,100 @@ def make_llm_policy(model: str = "gpt-4o-mini", verbose: bool = False):
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Run AI agent on restaurant tasks")
-    parser.add_argument(
-        "--task",
-        choices=["weekday_lunch", "weekend_rush", "crisis_shift", "all"],
-        default="all",
-        help="Which task to run (default: all)",
-    )
-    parser.add_argument("--model", default="gpt-4o-mini", help="OpenAI model name")
-    parser.add_argument("--verbose", action="store_true", help="Show detailed output")
-    args = parser.parse_args()
-
-    # Check for API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("ERROR: OPENAI_API_KEY environment variable not set.")
-        print("Set it with: $env:OPENAI_API_KEY = 'your-key-here'")
+def main() -> None:
+    """Run the agent following competition submission format."""
+    
+    # Validate API key
+    if not API_KEY:
+        print("ERROR: OPENAI_API_KEY environment variable not set.", flush=True)
         sys.exit(1)
 
-    tasks = (
-        ["weekday_lunch", "weekend_rush", "crisis_shift"]
-        if args.task == "all"
-        else [args.task]
-    )
+    # Log episode start
+    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
-    policy = make_llm_policy(model=args.model, verbose=args.verbose)
+    steps_taken = 0
+    rewards: list[float] = []
+    final_score = 0.0
+    success = False
 
-    results = {}
-    for task_id in tasks:
-        print(f"\n{'='*60}")
-        print(f"  Running: {task_id} (model: {args.model})")
-        print(f"{'='*60}")
+    try:
+        # Import here to avoid circular imports
+        from env.environment import RestaurantEnv
+        from env.graders import grade
+        
+        # Create policy and environment
+        policy = make_llm_policy(model=MODEL_NAME, verbose=VERBOSE)
+        env = RestaurantEnv()
+        state = env.reset(TASK_NAME)
 
-        result, grade_report = run_episode(task_id, policy, verbose=args.verbose)
-        results[task_id] = grade_report
+        # Run step-by-step
+        done = False
+        step = 0
+        
+        while not done and step < MAX_STEPS:
+            step += 1
+            
+            # Get agent action
+            action = policy(state)
+            
+            # Execute in environment
+            state, reward, done, info = env.step(action)
+            
+            # Format action as JSON string
+            action_json = json.dumps({
+                "staff_changes": action.staff_changes,
+                "menu_changes": action.menu_changes,
+                "price_adjustments": action.price_adjustments,
+                "reorder_inventory": action.reorder_inventory,
+                "promotion_active": action.promotion_active,
+            })
+            
+            # Log step in competition format
+            log_step(
+                step=step,
+                action=action_json,
+                reward=reward,
+                done=done,
+                error=None,
+            )
+            
+            rewards.append(reward)
+            steps_taken = step
 
-        print(f"\n  Result: profit={result.profit:.0f} | rating={result.average_rating} | "
-              f"served={result.orders_served} | failed={result.orders_failed}")
-        print(f"  SCORE: {grade_report['final_score']}/100")
-        for pillar, score in grade_report["pillar_scores"].items():
-            print(f"    {pillar}: {score:.1f}/100")
+        # Get final results
+        result = env.get_result()
+        grade_report = grade(TASK_NAME, result)
+        final_score = grade_report.get("final_score", 0.0)
+        
+        # Determine success
+        success = final_score >= SUCCESS_THRESHOLD
 
-    # Summary
-    if len(tasks) > 1:
-        print(f"\n{'='*60}")
-        print("  SUMMARY")
-        print(f"{'='*60}")
-        total = 0
-        for task_id, report in results.items():
-            score = report["final_score"]
-            total += score
-            print(f"  {task_id:<20s}: {score:.1f}/100")
-        avg = total / len(results)
-        print(f"  {'AVERAGE':<20s}: {avg:.1f}/100")
+        if VERBOSE:
+            print(f"\n{'='*60}", flush=True)
+            print(f"Task: {TASK_NAME}", flush=True)
+            print(f"Final Score: {final_score:.1f}/100", flush=True)
+            for pillar, score in grade_report.get("pillar_scores", {}).items():
+                print(f"  {pillar}: {score:.1f}/100", flush=True)
+            print(f"{'='*60}\n", flush=True)
+
+    except Exception as e:
+        if VERBOSE:
+            print(f"[ERROR] Episode failed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        success = False
+        steps_taken = 0
+        rewards = []
+        final_score = 0.0
+
+    finally:
+        # Always log end (even on error)
+        log_end(
+            success=success,
+            steps=steps_taken,
+            score=final_score,
+            rewards=rewards,
+        )
 
 
 if __name__ == "__main__":
