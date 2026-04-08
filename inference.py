@@ -30,10 +30,6 @@ from openai import OpenAI
 
 from env.models import AgentAction, RestaurantState
 
-# ═══════════════════════════════════════════════════════════════════════
-# CONFIGURATION
-# ═══════════════════════════════════════════════════════════════════════
-
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -45,17 +41,13 @@ VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
 ALL_TASKS = ["weekday_lunch", "weekend_rush", "crisis_shift"]
 MAX_STEPS = 12
 MAX_SCORE = 100.0
-SUCCESS_THRESHOLD = 60.0  # Need 60/100 to count as success
+SUCCESS_THRESHOLD = 60.0
 
 
 def _debug(msg: str) -> None:
     """Print debug info to stderr only — never pollute stdout."""
     print(msg, file=sys.stderr, flush=True)
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# STDOUT LOGGING — Competition Format
-# ═══════════════════════════════════════════════════════════════════════
 
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
@@ -78,10 +70,6 @@ def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> No
         flush=True,
     )
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# PROMPT CONSTRUCTION
-# ═══════════════════════════════════════════════════════════════════════
 
 SYSTEM_PROMPT = """You are an expert restaurant shift manager AI for an Indian restaurant.
 You manage a 12-step shift (30 minutes each). Each step you decide:
@@ -159,10 +147,6 @@ def parse_llm_response(response_text: str) -> AgentAction:
         return AgentAction()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# SAFETY RULES — applied on top of LLM output
-# ═══════════════════════════════════════════════════════════════════════
-
 def apply_safety_rules(state: RestaurantState, action: AgentAction) -> AgentAction:
     """
     Deterministic safety net that prevents obviously bad decisions.
@@ -212,10 +196,6 @@ def apply_safety_rules(state: RestaurantState, action: AgentAction) -> AgentActi
 
     return merged
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# RUN ONE EPISODE
-# ═══════════════════════════════════════════════════════════════════════
 
 def run_episode(task_id: str, client: OpenAI) -> tuple[float, bool]:
     """Run a single task episode. Returns (final_score_0_to_100, success)."""
@@ -308,10 +288,6 @@ def run_episode(task_id: str, client: OpenAI) -> tuple[float, bool]:
     log_end(success=success, steps=steps_taken, score=final_score, rewards=rewards)
     return final_score, success
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════
 
 def main() -> None:
     if not HF_TOKEN:

@@ -25,8 +25,6 @@ from env.graders import grade
 from env.models import AgentAction, RestaurantState
 
 
-# ── Request / Response schemas ────────────────────────────────────────────
-
 class ResetRequest(BaseModel):
     task_id: str = Field(
         default="weekday_lunch",
@@ -46,14 +44,11 @@ class ResetResponse(BaseModel):
     task_id: str
 
 
-# ── Global environment instance ───────────────────────────────────────────
 
 env = RestaurantEnv()
 current_task_id: str | None = None
 VALID_TASKS = ["weekday_lunch", "weekend_rush", "crisis_shift"]
 
-
-# ── App setup ─────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,8 +70,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def health_check():
@@ -213,9 +206,8 @@ async def list_tasks():
     }
 
 
-# ── Run server ────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
+
     import uvicorn
     port = int(os.getenv("PORT", "7860"))
     uvicorn.run(app, host="0.0.0.0", port=port)

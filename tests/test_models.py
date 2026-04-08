@@ -16,9 +16,6 @@ from env.models import (
 )
 
 
-# ── MenuItem tests ─────────────────────────────────────────────────────
-
-
 class TestMenuItem:
     """Tests for the MenuItem model."""
 
@@ -73,8 +70,6 @@ class TestMenuItem:
         assert item.available is True
 
 
-# ── StaffMember tests ─────────────────────────────────────────────────
-
 
 class TestStaffMember:
     """Tests for the StaffMember model."""
@@ -99,9 +94,6 @@ class TestStaffMember:
             StaffMember(
                 name="X", role="chef", skill_level=1.5, hourly_wage=100
             )
-
-
-# ── InventoryItem tests ───────────────────────────────────────────────
 
 
 class TestInventoryItem:
@@ -129,9 +121,6 @@ class TestInventoryItem:
             )
 
 
-# ── AgentAction tests ─────────────────────────────────────────────────
-
-
 class TestAgentAction:
     """Tests for the AgentAction model."""
 
@@ -153,9 +142,6 @@ class TestAgentAction:
         )
         assert action.staff_changes["Ravi"] is True
         assert action.promotion_active is True
-
-
-# ── ShiftResult tests ─────────────────────────────────────────────────
 
 
 class TestShiftResult:

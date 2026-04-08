@@ -41,8 +41,6 @@ def simple_rule_policy(state: RestaurantState) -> AgentAction:
     action = AgentAction()
     demand = state.demand_level
 
-    # ── Rule 1: Staffing decisions ────────────────────────────────────
-
     # Build lookup of staff by name for convenience
     staff_by_name = {s.name: s for s in state.staff}
 
@@ -93,16 +91,12 @@ def simple_rule_policy(state: RestaurantState) -> AgentAction:
         best_dw = max(all_dishwashers, key=lambda s: s.skill_level)
         action.staff_changes[best_dw.name] = True
 
-    # ── Rule 2: Inventory reorders ────────────────────────────────────
-
     LOW_STOCK_THRESHOLD = 5.0
     REORDER_AMOUNT = 10.0
 
     for inv in state.inventory:
         if inv.quantity < LOW_STOCK_THRESHOLD:
             action.reorder_inventory[inv.name] = REORDER_AMOUNT
-
-    # ── Rule 3: Menu availability ─────────────────────────────────────
 
     # Build a quick inventory lookup
     inv_lookup = {inv.name: inv.quantity for inv in state.inventory}
@@ -120,8 +114,6 @@ def simple_rule_policy(state: RestaurantState) -> AgentAction:
             action.menu_changes[item.name] = False  # disable it
         elif can_make and not item.available:
             action.menu_changes[item.name] = True  # re-enable it
-
-    # ── Rule 4: Promotions ────────────────────────────────────────────
 
     # Run promotion if demand is low but we have good ratings
     if demand < 0.8 and state.customer_rating >= 3.5:

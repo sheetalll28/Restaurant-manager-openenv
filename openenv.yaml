@@ -17,7 +17,6 @@ tags:
   - real-world
   - indian-market
 
-# ── Observation / Action / Reward types ──────────────────────────────────
 
 observation:
   type: object
@@ -45,7 +44,6 @@ reward:
     and service success rate/30%, with exponential penalty for high failure rates.
     Dense signal available every step. Final graded score normalized to [0.0, 1.0].
 
-# ── Tasks ────────────────────────────────────────────────────────────────
 
 tasks:
   - id: weekday_lunch
@@ -80,8 +78,6 @@ tasks:
     max_steps: 12
     success_threshold: 0.60
 
-# ── Environment configuration ────────────────────────────────────────────
-
 environment:
   module: env.environment
   class: RestaurantEnv
@@ -100,7 +96,6 @@ environment:
       - "GET  /state    → current observation"
       - "GET  /tasks    → list available tasks"
 
-# ── Inference configuration ──────────────────────────────────────────────
 
 inference:
   script: inference.py
@@ -117,7 +112,6 @@ inference:
     MODEL_NAME: "Qwen/Qwen2.5-72B-Instruct"
     TASK: "all"
 
-# ── Grading ──────────────────────────────────────────────────────────────
 
 grading:
   module: env.graders

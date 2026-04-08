@@ -1,4 +1,3 @@
-# ── Restaurant Manager OpenEnv ─────────────────────────────────────────
 # Dockerfile for Hugging Face Spaces deployment
 # Build:  docker build -t restaurant-manager .
 # Run:    docker run -p 7860:7860 -e HF_TOKEN=your_token restaurant-manager
