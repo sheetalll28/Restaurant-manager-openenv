@@ -1,17 +1,14 @@
 """
 FastAPI server for the Restaurant Manager OpenEnv.
 
-Exposes the environment over HTTP for:
-  - HF Space deployment
-  - openenv validate
-  - Remote inference
-
-Endpoints:
-  GET  /           → health check
-  POST /reset      → reset environment with a task_id
-  POST /step       → submit an action, get next state
-  GET  /state      → get current state
+Exposes the environment over HTTP:
+  GET  /           → health check (returns 200 + status)
+  GET  /health     → alias for health check
+  POST /reset      → reset environment with task_id
+  POST /step       → submit action, get observation
+  GET  /state      → current state
   GET  /tasks      → list available tasks
+  GET  /result     → final shift result (after done=True)
 """
 
 from __future__ import annotations
@@ -20,14 +17,15 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from env.environment import RestaurantEnv
 from env.graders import grade
 from env.models import AgentAction, RestaurantState
 
-# ── Request / Response schemas ────────────────────────────────────────────
 
+# ── Request / Response schemas ────────────────────────────────────────────
 
 class ResetRequest(BaseModel):
     task_id: str = Field(
@@ -45,67 +43,76 @@ class StepResponse(BaseModel):
 
 class ResetResponse(BaseModel):
     observation: RestaurantState
-
-
-class TaskInfo(BaseModel):
-    id: str
-    name: str
-    difficulty: str
-    description: str
+    task_id: str
 
 
 # ── Global environment instance ───────────────────────────────────────────
 
 env = RestaurantEnv()
 current_task_id: str | None = None
+VALID_TASKS = ["weekday_lunch", "weekend_rush", "crisis_shift"]
 
 
 # ── App setup ─────────────────────────────────────────────────────────────
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle."""
     yield
 
 
 app = FastAPI(
     title="Restaurant Manager OpenEnv",
     description="AI restaurant shift management environment — OpenEnv compatible",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
+)
+
+# Allow cross-origin requests (needed for HF Space iframe interactions)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
 
-
 @app.get("/")
 async def health_check():
-    """Health check endpoint. Returns 200 if the server is running."""
-    return {"status": "ok", "environment": "restaurant-manager", "version": "1.0.0"}
+    """Health check — returns 200 if server is running. Required by OpenEnv validator."""
+    return {
+        "status": "ok",
+        "environment": "restaurant-manager",
+        "version": "1.1.0",
+        "tasks": VALID_TASKS,
+    }
+
+
+@app.get("/health")
+async def health_check_alias():
+    """Alias for health check — some validators ping /health."""
+    return {"status": "ok"}
 
 
 @app.post("/reset", response_model=ResetResponse)
 async def reset(request: ResetRequest):
     """
     Reset the environment with the specified task.
-
     Returns the initial observation.
     """
     global current_task_id
 
-    valid_tasks = ["weekday_lunch", "weekend_rush", "crisis_shift"]
-    if request.task_id not in valid_tasks:
+    if request.task_id not in VALID_TASKS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown task '{request.task_id}'. Available: {valid_tasks}",
+            detail=f"Unknown task '{request.task_id}'. Available: {VALID_TASKS}",
         )
 
     try:
         observation = env.reset(request.task_id)
         current_task_id = request.task_id
-        return ResetResponse(observation=observation)
+        return ResetResponse(observation=observation, task_id=request.task_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -114,9 +121,7 @@ async def reset(request: ResetRequest):
 async def step(action: AgentAction):
     """
     Execute one step in the environment.
-
-    Accepts an AgentAction and returns the new observation, reward, done flag,
-    and info dict.
+    Call POST /reset first to initialize.
     """
     if current_task_id is None:
         raise HTTPException(
@@ -127,11 +132,10 @@ async def step(action: AgentAction):
     try:
         observation, reward, done, info = env.step(action)
 
-        # If episode is done, include final grade in info
         if done:
             result = env.get_result()
             grade_report = grade(current_task_id, result)
-            info["final_score"] = grade_report["final_score"] / 100.0  # normalize to [0,1]
+            info["final_score"] = round(grade_report["final_score"] / 100.0, 4)
             info["pillar_scores"] = grade_report["pillar_scores"]
             info["shift_result"] = result.model_dump()
 
@@ -149,27 +153,39 @@ async def step(action: AgentAction):
 
 @app.get("/state")
 async def get_state():
-    """
-    Return the current environment state.
-
-    Must call POST /reset before calling this endpoint.
-    """
+    """Return the current environment state."""
     if current_task_id is None:
         raise HTTPException(
             status_code=400,
             detail="Environment not initialized. Call POST /reset first.",
         )
-
     try:
-        current_state = env.state()
-        return {"observation": current_state.model_dump()}
+        return {"observation": env.state().model_dump(), "task_id": current_task_id}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/result")
+async def get_result():
+    """Get the final shift result. Call after done=True."""
+    if current_task_id is None:
+        raise HTTPException(status_code=400, detail="No episode in progress.")
+    try:
+        result = env.get_result()
+        grade_report = grade(current_task_id, result)
+        return {
+            "task_id": current_task_id,
+            "shift_result": result.model_dump(),
+            "final_score": round(grade_report["final_score"] / 100.0, 4),
+            "pillar_scores": grade_report["pillar_scores"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/tasks")
 async def list_tasks():
-    """List all available tasks with their descriptions."""
+    """List all available tasks with descriptions."""
     return {
         "tasks": [
             {
@@ -177,18 +193,21 @@ async def list_tasks():
                 "name": "Weekday Lunch Service",
                 "difficulty": "easy",
                 "description": "Stable weekday lunch with normal demand and full inventory.",
+                "targets": {"profit": 8000, "rating": 4.2, "service_rate": 0.80},
             },
             {
                 "id": "weekend_rush",
                 "name": "Weekend Festival Rush",
                 "difficulty": "medium",
-                "description": "High demand surge with low starting rating and large party event.",
+                "description": "High demand surge, low starting rating, large party at step 4, best chef unavailable.",
+                "targets": {"profit": 12000, "rating": 4.0, "service_rate": 0.75},
             },
             {
                 "id": "crisis_shift",
                 "name": "Crisis Management Shift",
                 "difficulty": "hard",
-                "description": "Doubled ingredient costs, low inventory, health inspection, competitor pressure.",
+                "description": "Doubled ingredient costs, 40% inventory, health inspection at step 8, competitor pressure.",
+                "targets": {"profit": 5000, "rating": 4.0, "service_rate": 0.70},
             },
         ]
     }
@@ -198,6 +217,5 @@ async def list_tasks():
 
 if __name__ == "__main__":
     import uvicorn
-
     port = int(os.getenv("PORT", "7860"))
-    uvicorn.run(app, host="localhost", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
