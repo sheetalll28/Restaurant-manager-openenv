@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -89,23 +89,25 @@ async def health_check_alias():
 
 
 @app.post("/reset", response_model=ResetResponse)
-async def reset(request: ResetRequest):
+async def reset(request: ResetRequest | None = Body(default=None)):
     """
     Reset the environment with the specified task.
     Returns the initial observation.
     """
     global current_task_id
 
-    if request.task_id not in VALID_TASKS:
+    requested_task_id = request.task_id if request is not None else "weekday_lunch"
+
+    if requested_task_id not in VALID_TASKS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown task '{request.task_id}'. Available: {VALID_TASKS}",
+            detail=f"Unknown task '{requested_task_id}'. Available: {VALID_TASKS}",
         )
 
     try:
-        observation = env.reset(request.task_id)
-        current_task_id = request.task_id
-        return ResetResponse(observation=observation, task_id=request.task_id)
+        observation = env.reset(requested_task_id)
+        current_task_id = requested_task_id
+        return ResetResponse(observation=observation, task_id=requested_task_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
