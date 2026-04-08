@@ -6,7 +6,7 @@
 FROM python:3.11-slim
 
 # Metadata
-LABEL maintainer="kajal-jotwani"
+LABEL maintainer="kajaljotwani"
 LABEL description="Restaurant Manager OpenEnv — AI restaurant shift management"
 LABEL version="1.1.0"
 
