@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -89,7 +89,7 @@ async def health_check_alias():
 
 
 @app.post("/reset", response_model=ResetResponse)
-async def reset(request: ResetRequest):
+async def reset(request: ResetRequest = Body(default=ResetRequest())):
     """
     Reset the environment with the specified task.
     Returns the initial observation.
