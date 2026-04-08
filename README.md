@@ -1,8 +1,8 @@
 ---
 title: Restaurant Manager OpenEnv
 emoji: 🍽️
-colorFrom: orange
-colorTo: red
+colorFrom: red
+colorTo: purple
 sdk: docker
 pinned: true
 tags:
