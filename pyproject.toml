@@ -38,6 +38,7 @@ dev = [
 ]
 
 [project.scripts]
+server = "server.app:main"
 restaurant-manager-server = "server.app:main"
 
 [project.urls]
