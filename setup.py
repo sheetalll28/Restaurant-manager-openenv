@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-"""Setup script for restaurant-manager-openenv."""
-
 from setuptools import setup, find_packages
 
 setup(
@@ -14,6 +11,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.10",
     install_requires=[
+        "openenv-core>=0.2.0",
         "fastapi==0.111.0",
         "uvicorn[standard]==0.29.0",
         "pydantic==2.7.1",
@@ -21,6 +19,11 @@ setup(
         "httpx==0.27.0",
         "python-multipart==0.0.9",
     ],
+    entry_points={
+        "console_scripts": [
+            "restaurant-manager-server=server.app:app",
+        ],
+    },
     extras_require={
         "dev": [
             "pytest>=7.0",

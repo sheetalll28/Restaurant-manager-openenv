@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "openenv-core>=0.2.0",
     "fastapi==0.111.0",
     "uvicorn[standard]==0.29.0",
     "pydantic==2.7.1",
@@ -36,13 +37,16 @@ dev = [
     "pytest-cov>=4.0",
 ]
 
+[project.scripts]
+restaurant-manager-server = "server.app:app"
+
 [project.urls]
 Homepage = "https://huggingface.co/spaces/kajaljotwani/restaurant-manager-openenv"
 Documentation = "https://github.com/sheetalll28/Restaurant-manager-openenv/blob/main/README.md"
 Repository = "https://github.com/sheetalll28/Restaurant-manager-openenv/tree/main"
 
 [tool.setuptools]
-packages = ["env"]
+packages = ["env", "server"]
 
 [tool.setuptools.package-data]
 env = ["*.py"]
