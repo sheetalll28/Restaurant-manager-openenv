@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include requirements.txt
+include openenv.yaml
+recursive-include env *.py
+recursive-include tests *.py
