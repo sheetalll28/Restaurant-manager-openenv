@@ -21,7 +21,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "restaurant-manager-server=server.app:app",
+            "restaurant-manager-server=server.app:main",
         ],
     },
     extras_require={
