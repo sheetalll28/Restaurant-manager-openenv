@@ -37,9 +37,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://huggingface.co/spaces"
-Documentation = "https://huggingface.co/spaces"
-Repository = "https://huggingface.co/spaces"
+Homepage = "https://huggingface.co/spaces/kajaljotwani/restaurant-manager-openenv"
+Documentation = "https://github.com/sheetalll28/Restaurant-manager-openenv/blob/main/README.md"
+Repository = "https://github.com/sheetalll28/Restaurant-manager-openenv/tree/main"
 
 [tool.setuptools]
 packages = ["env"]
