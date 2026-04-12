@@ -2,7 +2,7 @@
 title: Restaurant Manager OpenEnv
 emoji: 🍽️
 colorFrom: red
-colorTo: orange
+colorTo: purple
 sdk: docker
 pinned: true
 tags:
@@ -234,4 +234,3 @@ openenv validate
 venv/bin/python -m pytest -q
 openenv push . --repo-id your_huggingface_username/restaurant-manager-openenv
 ```
-
