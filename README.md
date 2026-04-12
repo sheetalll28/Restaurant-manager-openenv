@@ -25,7 +25,7 @@ This repository now includes:
 - a browser dashboard at `/` and `/play`
 - OpenEnv-compatible packaging and validation
 
-![Restaurant Manager Dashboard Preview](assets/dashboard-preview.png)
+![Restaurant Manager Dashboard Demo](assets/dashboard.gif)
 
 ## What the agent controls
 
