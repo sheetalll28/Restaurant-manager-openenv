@@ -22,7 +22,7 @@ This repository now includes:
 - 8 distinct scenarios
 - dense step rewards with stronger penalties for failures and inefficiency
 - deterministic final grading
-- a browser dashboard at `/play`
+- a browser dashboard at `/` and `/play`
 - OpenEnv-compatible packaging and validation
 
 ## What the agent controls
@@ -94,6 +94,12 @@ venv/bin/uvicorn app:app --host 0.0.0.0 --port 7860
 ```
 
 Open:
+
+```text
+http://localhost:7860/
+```
+
+The dashboard is also available at:
 
 ```text
 http://localhost:7860/play
@@ -169,8 +175,10 @@ If the token is valid but push fails with a permissions error, the token likely 
 
 Main endpoints:
 
-- `GET /` health/status
-- `GET /play` browser dashboard
+- `GET /` browser dashboard
+- `GET /play` browser dashboard alias
+- `GET /status` JSON status metadata
+- `GET /health` health check
 - `POST /reset` start a scenario
 - `POST /step` execute one action
 - `GET /state` fetch current observation

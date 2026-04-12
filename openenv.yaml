@@ -142,8 +142,10 @@ environment:
     class: FastAPI app
     port: 7860
     endpoints:
-      - "GET  /         → health check"
-      - "GET  /play     → browser dashboard"
+      - "GET  /         → browser dashboard"
+      - "GET  /play     → browser dashboard alias"
+      - "GET  /status   → JSON status metadata"
+      - "GET  /health   → health check"
       - "POST /reset    → initialize episode"
       - "POST /step     → execute action"
       - "GET  /state    → current observation"

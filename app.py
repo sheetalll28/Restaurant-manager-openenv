@@ -76,8 +76,25 @@ if UI_DIR.exists():
     app.mount("/assets", StaticFiles(directory=UI_DIR), name="ui-assets")
 
 
+def _ui_response() -> FileResponse:
+    index_path = UI_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="UI not found.")
+    return FileResponse(index_path)
+
+
 @app.get("/")
-async def health_check():
+async def play_ui_root():
+    return _ui_response()
+
+
+@app.get("/play")
+async def play_ui():
+    return _ui_response()
+
+
+@app.get("/status")
+async def status():
     return {
         "status": "ok",
         "environment": "restaurant-manager",
@@ -85,14 +102,6 @@ async def health_check():
         "tasks": list(TASK_SPECS.keys()),
         "ui": "/play",
     }
-
-
-@app.get("/play")
-async def play_ui():
-    index_path = UI_DIR / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="UI not found.")
-    return FileResponse(index_path)
 
 
 @app.get("/health")
@@ -186,4 +195,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
