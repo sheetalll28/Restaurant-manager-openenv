@@ -25,6 +25,8 @@ This repository now includes:
 - a browser dashboard at `/` and `/play`
 - OpenEnv-compatible packaging and validation
 
+![Restaurant Manager Dashboard Preview](assets/dashboard-preview.png)
+
 ## What the agent controls
 
 At every step, the agent receives the full restaurant state and chooses:
@@ -84,6 +86,60 @@ Final grading is deterministic and task-specific. The grader scores:
 - `efficiency`
 
 This makes the benchmark harder to game with one-dimensional strategies like permanent overpricing or overstaffing.
+
+## Baseline Benchmarks
+
+The repo includes a small rule-based benchmark runner:
+
+```bash
+venv/bin/python scripts/eval_baselines.py
+```
+
+Average score across all 8 tasks:
+
+| Policy | Average score |
+|---|---:|
+| `profit_first` | 68.07 |
+| `simple_rule` | 59.28 |
+| `do_nothing` | 58.63 |
+| `service_first` | 48.80 |
+
+Task-level scores:
+
+| Policy | Task | Score |
+|---|---|---:|
+| `do_nothing` | `weekday_lunch` | 77.85 |
+| `do_nothing` | `weekend_rush` | 51.50 |
+| `do_nothing` | `crisis_shift` | 56.96 |
+| `do_nothing` | `monsoon_delivery_crunch` | 46.13 |
+| `do_nothing` | `wedding_catering_chaos` | 55.93 |
+| `do_nothing` | `office_catering_lunch` | 71.45 |
+| `do_nothing` | `tourist_season_dinner` | 59.09 |
+| `do_nothing` | `staff_shortage_recovery` | 50.14 |
+| `simple_rule` | `weekday_lunch` | 71.38 |
+| `simple_rule` | `weekend_rush` | 68.45 |
+| `simple_rule` | `crisis_shift` | 34.19 |
+| `simple_rule` | `monsoon_delivery_crunch` | 61.02 |
+| `simple_rule` | `wedding_catering_chaos` | 55.16 |
+| `simple_rule` | `office_catering_lunch` | 65.48 |
+| `simple_rule` | `tourist_season_dinner` | 54.01 |
+| `simple_rule` | `staff_shortage_recovery` | 64.53 |
+| `profit_first` | `weekday_lunch` | 81.18 |
+| `profit_first` | `weekend_rush` | 67.02 |
+| `profit_first` | `crisis_shift` | 37.36 |
+| `profit_first` | `monsoon_delivery_crunch` | 70.37 |
+| `profit_first` | `wedding_catering_chaos` | 68.11 |
+| `profit_first` | `office_catering_lunch` | 76.74 |
+| `profit_first` | `tourist_season_dinner` | 67.50 |
+| `profit_first` | `staff_shortage_recovery` | 76.27 |
+| `service_first` | `weekday_lunch` | 60.41 |
+| `service_first` | `weekend_rush` | 55.93 |
+| `service_first` | `crisis_shift` | 38.27 |
+| `service_first` | `monsoon_delivery_crunch` | 46.91 |
+| `service_first` | `wedding_catering_chaos` | 44.77 |
+| `service_first` | `office_catering_lunch` | 55.41 |
+| `service_first` | `tourist_season_dinner` | 44.76 |
+| `service_first` | `staff_shortage_recovery` | 43.98 |
 
 ## Browser UI
 
@@ -215,6 +271,8 @@ print(r.json()["reward"], r.json()["done"])
 ├── models.py
 ├── openenv.yaml
 ├── README.md
+├── scripts/
+│   └── eval_baselines.py
 ├── ui/
 │   ├── app.js
 │   ├── index.html
