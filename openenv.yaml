@@ -2,13 +2,14 @@
 # Restaurant Manager — AI-driven Indian restaurant shift management
 
 name: restaurant-manager
-version: "1.1.0"
+version: "1.2.0"
 description: >
   A restaurant shift management environment set in an Indian restaurant context,
   where an AI agent makes real-time decisions about staffing, menu availability,
   pricing, inventory reorders, and promotions to maximize profit while maintaining
-  customer satisfaction and service quality across a 12-step shift.
-  Calibrated against real Indian restaurant economics (Swiggy/Zomato market data).
+  customer satisfaction and service quality across a 12-step shift. The environment
+  includes event-driven demand shocks, stockout pressure, and efficiency tradeoffs
+  across eight scenarios.
 
 tags:
   - openenv
@@ -38,11 +39,12 @@ action:
 
 reward:
   type: float
-  range: [-0.5, 0.75]
+  range: [-1.0, 1.0]
   description: >
-    Per-step reward combining profit/40% (tanh-normalized), customer rating/30%,
-    and service success rate/30%, with exponential penalty for high failure rates.
-    Dense signal available every step. Final graded score normalized to [0.0, 1.0].
+    Per-step reward combining normalized profit, customer rating trajectory,
+    and service reliability, with explicit penalties for failures, stockouts,
+    capacity misses, labor inefficiency, and expensive reorders. Dense signal
+    is available every step. Final graded score normalized to [0.0, 1.0].
 
 
 tasks:
@@ -78,6 +80,56 @@ tasks:
     max_steps: 12
     success_threshold: 0.60
 
+  - id: monsoon_delivery_crunch
+    name: Monsoon Delivery Crunch
+    description: >
+      Heavy rain shifts demand into a dinner delivery rush, and a supplier delay
+      shrinks available inventory mid-service.
+      Target: profit ≥ ₹9,000, rating ≥ 4.1, service rate ≥ 78%.
+    difficulty: medium
+    max_steps: 12
+    success_threshold: 0.62
+
+  - id: wedding_catering_chaos
+    name: Wedding Catering Chaos
+    description: >
+      Premium evening demand culminates in a VIP visit and large group arrival.
+      The agent must protect throughput and margin without allowing late-stage collapse.
+      Target: profit ≥ ₹15,000, rating ≥ 4.1, service rate ≥ 82%.
+    difficulty: hard
+    max_steps: 12
+    success_threshold: 0.65
+
+  - id: office_catering_lunch
+    name: Office Catering Lunch
+    description: >
+      A dependable corporate lunch block creates concentrated midday demand and
+      rewards smooth kitchen throughput with minimal overstaffing.
+      Target: profit ≥ ₹10,000, rating ≥ 4.25, service rate ≥ 84%.
+    difficulty: easy
+    max_steps: 12
+    success_threshold: 0.63
+
+  - id: tourist_season_dinner
+    name: Tourist Season Dinner
+    description: >
+      An evening tourist wave raises willingness to pay, but late-service delays
+      can quickly erode ratings and future demand.
+      Target: profit ≥ ₹13,000, rating ≥ 4.15, service rate ≥ 80%.
+    difficulty: medium
+    max_steps: 12
+    success_threshold: 0.64
+
+  - id: staff_shortage_recovery
+    name: Staff Shortage Recovery
+    description: >
+      The shift opens under-staffed and inventory is light, requiring careful
+      call-ins, menu pruning, and recovery before compliance pressure hits.
+      Target: profit ≥ ₹7,000, rating ≥ 4.0, service rate ≥ 76%.
+    difficulty: hard
+    max_steps: 12
+    success_threshold: 0.61
+
 environment:
   module: env.environment
   class: RestaurantEnv
@@ -91,6 +143,7 @@ environment:
     port: 7860
     endpoints:
       - "GET  /         → health check"
+      - "GET  /play     → browser dashboard"
       - "POST /reset    → initialize episode"
       - "POST /step     → execute action"
       - "GET  /state    → current observation"
@@ -128,3 +181,5 @@ grading:
       description: "Fraction of orders successfully served. Penalizes high failure rates."
     - name: satisfaction
       description: "Combined satisfaction metric (0–100), 60% rating + 40% service rate."
+    - name: efficiency
+      description: "Operational efficiency after labor, reorder, stockout, and capacity penalties."

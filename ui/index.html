@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurant Manager Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Restaurant Manager OpenEnv</p>
+        <h1>Restaurant Manager Dashboard</h1>
+        <p class="lede">
+          Reset a scenario, make staffing/menu/pricing decisions, and inspect how
+          demand, service failures, and rewards evolve step by step.
+        </p>
+        <p id="taskMeta" class="meta-line">Loading scenarios...</p>
+      </div>
+      <div class="hero-actions">
+        <label class="task-picker">
+          <span>Scenario</span>
+          <select id="taskSelect"></select>
+        </label>
+        <button id="resetBtn" class="button primary">Reset Scenario</button>
+        <button id="resultBtn" class="button ghost">Fetch Result</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Action Builder</h2>
+          <button id="stepBtn" class="button primary">Run Step</button>
+        </div>
+        <div class="form-grid">
+          <div>
+            <h3>Staff</h3>
+            <div id="staffControls" class="stack"></div>
+          </div>
+          <div>
+            <h3>Menu</h3>
+            <div id="menuControls" class="stack"></div>
+          </div>
+          <div>
+            <h3>Pricing</h3>
+            <div id="priceControls" class="stack"></div>
+          </div>
+          <div>
+            <h3>Reorders</h3>
+            <div id="reorderControls" class="stack"></div>
+          </div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="promotionToggle">
+          <span>Enable promotion</span>
+        </label>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>State Snapshot</h2>
+          <button id="refreshBtn" class="button ghost">Refresh</button>
+        </div>
+        <div id="summaryCards" class="cards"></div>
+        <div class="split">
+          <div>
+            <h3>Inventory</h3>
+            <div id="inventoryView" class="tableish"></div>
+          </div>
+          <div>
+            <h3>Latest Result</h3>
+            <pre id="resultView" class="console">No result yet.</pre>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Scenario Briefs</h2>
+          <span id="scenarioCount" class="pill">0 scenarios</span>
+        </div>
+        <div id="taskCards" class="task-cards"></div>
+      </article>
+      <article class="panel">
+        <h2>Event Log</h2>
+        <pre id="logView" class="console">Waiting for reset.</pre>
+      </article>
+    </section>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 title: Restaurant Manager OpenEnv
 emoji: 🍽️
 colorFrom: red
-colorTo: purple
+colorTo: orange
 sdk: docker
 pinned: true
 tags:
@@ -10,174 +10,228 @@ tags:
   - reinforcement-learning
   - restaurant-management
   - real-world-rl
-  - indian-market
+  - simulation
 license: mit
 ---
 
-# Restaurant Manager — OpenEnv
+# Restaurant Manager OpenEnv
 
-An RL environment where an AI agent manages a restaurant shift. Not a toy. The agent has to balance staff wages against customer demand, keep ratings up, manage ingredients that run out mid-service, survive health inspections, and stay profitable under supply chain pressure.
+Restaurant Manager OpenEnv is a restaurant operations benchmark where an agent runs a 12-step shift inside an Indian restaurant setting. The agent has to balance staffing, menu availability, pricing, promotions, and emergency reorders while protecting service quality, ratings, and profitability.
 
-Built for the OpenEnv RL Challenge.
+This repository now includes:
+- 8 distinct scenarios
+- dense step rewards with stronger penalties for failures and inefficiency
+- deterministic final grading
+- a browser dashboard at `/play`
+- OpenEnv-compatible packaging and validation
 
----
+## What the agent controls
 
-## What the agent actually does
+At every step, the agent receives the full restaurant state and chooses:
 
-Every 30 minutes (one step), the agent looks at the full restaurant state — who's working, what's on the menu, what's in the fridge, how many customers are coming in — and makes decisions:
+- `staff_changes`: call in or send home named staff members
+- `menu_changes`: enable or disable menu items
+- `price_adjustments`: raise or lower dish prices within guarded limits
+- `reorder_inventory`: buy emergency stock at premium reorder prices
+- `promotion_active`: run a discount promotion that increases demand
 
-- **Staffing** — call in or send home any of 8 staff. Chefs handle order volume, servers deliver, dishwashers are mandatory for health inspections.
-- **Menu** — disable dishes you can't make (out of stock) or don't have capacity to prep. Leaving unavailable items "on" causes failed orders and kills your rating.
-- **Pricing** — adjust selling prices in real time. Useful for margins during low-demand periods.
-- **Inventory reorder** — emergency mid-shift reorders at 1.5x normal cost. Sometimes worth it, sometimes not.
-- **Promotions** — 15% discount that pulls 30% more customers. Great at low-demand; dangerous at peak when you can't handle more volume.
+The simulation tracks:
 
-The simulation tracks ingredient consumption, staff capacity (skills matter — a 0.9 chef handles ~4.5 orders/step, a 0.5 chef only 2.5), rolling customer ratings, and cumulative profit. Fail too many orders and your rating tanks. Low rating = lower future demand. It compounds.
+- demand changes across the shift
+- ingredient consumption and stockouts
+- kitchen and server capacity constraints
+- rating drift from service quality and pricing pressure
+- labor, food, and reorder costs
+- event-driven shocks such as large parties, inspections, delivery surges, and supplier delays
 
----
+## Scenario Set
 
-## Three tasks, genuinely different
+The environment includes 8 scenarios:
 
-**weekday_lunch** (easy) — Full inventory, good starting rating (4.3), predictable demand curve peaking at lunch. The agent mostly needs to scale staff to the 1.5x demand peak and avoid obvious mistakes. Good for learning the basics.
-
-**weekend_rush** (medium) — The best chef is unavailable. Starting rating is already damaged at 3.5 (one bad review). Demand hits 2.5x. A large party of 15 walks in at step 4 with no warning. The agent needs to recover the rating while handling surge demand with second-tier staff. Rating improvement is weighted highest in scoring — profit matters less.
-
-**crisis_shift** (hard) — Supply chain crisis doubled all ingredient costs. Inventory starts at 40% of normal. A health inspector arrives at step 8 (you need Arjun the dishwasher active with skill ≥ 0.6 or you get a rating penalty). A competitor opened nearby so demand is softer. Three things go wrong simultaneously and the agent has to prioritize correctly.
-
----
-
-## Reward function
-
-Per-step reward, not terminal-only:
-
-```
-reward = (0.4 × tanh(profit/5000)) + (0.3 × (rating−1)/4) + (0.3 × served/total)
-reward *= (1 − failure_rate)^1.5
-```
-
-The failure penalty is exponential — 50% failed orders reduces your reward by 29%, 100% failure wipes it entirely. This means the agent learns quickly that failed orders are worse than understaffing.
-
-Reward range is approximately −0.5 to +0.75 per step.
-
-Final score (0–100) is calculated separately by a deterministic grader that uses task-specific profit targets, rating targets, and service rate targets with different pillar weights per task.
-
----
-
-## Scoring breakdown
-
-| Task | Profit | Rating | Service | Satisfaction |
-|---|---|---|---|---|
-| weekday_lunch | 30% | 25% | 25% | 20% |
-| weekend_rush | 25% | **35%** | 25% | 15% |
-| crisis_shift | **35%** | 25% | 15% | 25% |
-
-The weighting shifts match the actual challenge. Weekend rush is won or lost on whether you recover the rating. Crisis shift is won or lost on whether you stay profitable under doubled costs.
-
----
-
-## Baseline scores (do-nothing policy)
-
-Just to have a floor for comparison:
-
-| Task | Score | Notes |
+| ID | Difficulty | Core pressure |
 |---|---|---|
-| weekday_lunch | 81.2 / 100 | Default staff setup is decent, demand is mild |
-| weekend_rush | 51.7 / 100 | High demand + low rating = lots of failed orders |
-| crisis_shift | 60.5 / 100 | Low inventory self-limits damage |
+| `weekday_lunch` | easy | predictable lunch peak and basic staffing discipline |
+| `weekend_rush` | medium | damaged rating, surge demand, large party shock |
+| `crisis_shift` | hard | doubled ingredient costs, low inventory, health inspection |
+| `monsoon_delivery_crunch` | medium | rain-driven demand surge and supplier delay |
+| `wedding_catering_chaos` | hard | premium evening demand, VIP visit, large party |
+| `office_catering_lunch` | easy | concentrated corporate lunch throughput |
+| `tourist_season_dinner` | medium | strong dinner demand with pricing sensitivity |
+| `staff_shortage_recovery` | hard | under-staffed opening with weak inventory buffers |
 
-A good LLM agent should beat these on all three tasks.
+## Reward and grading
 
----
+The step reward is not just profit. It combines:
 
-## Setup
+- normalized step profit
+- customer rating trajectory
+- service reliability
+
+It then subtracts explicit penalties for:
+
+- failed orders
+- stockout failures
+- capacity failures
+- expensive emergency reorders
+- inefficient labor usage when service remains weak
+
+Final grading is deterministic and task-specific. The grader scores:
+
+- `profit`
+- `rating`
+- `service`
+- `satisfaction`
+- `efficiency`
+
+This makes the benchmark harder to game with one-dimensional strategies like permanent overpricing or overstaffing.
+
+## Browser UI
+
+The environment ships with a browser dashboard:
+
+```bash
+venv/bin/uvicorn app:app --host 0.0.0.0 --port 7860
+```
+
+Open:
+
+```text
+http://localhost:7860/play
+```
+
+The dashboard lets you:
+
+- select any scenario
+- inspect the current state
+- toggle staff and menu availability
+- change prices
+- submit inventory reorders
+- run steps manually
+- inspect event logs, rewards, and final scores
+
+## Local setup
 
 ```bash
 git clone https://github.com/sheetalll28/Restaurant-manager-openenv
 cd Restaurant-manager-openenv
-pip install -r requirements.txt
 
-# Start the server
-uvicorn app:app --host 0.0.0.0 --port 7860
+python -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/pip install pytest
+```
 
-# Run inference against all tasks
+Run the API server:
+
+```bash
+venv/bin/uvicorn app:app --host 0.0.0.0 --port 7860
+```
+
+Run inference:
+
+```bash
 HF_TOKEN=your_token python inference.py
+```
 
-# Run one specific task
+Run one task:
+
+```bash
 HF_TOKEN=your_token TASK=crisis_shift VERBOSE=true python inference.py
 ```
 
-### Docker
+## Validation and tests
+
+Validate the environment:
 
 ```bash
-docker build -t restaurant-manager .
-docker run -p 7860:7860 -e HF_TOKEN=your_token restaurant-manager
+openenv validate
 ```
 
-### API
+Run tests:
+
+```bash
+venv/bin/python -m pytest -q
+```
+
+## Deployment
+
+To push this environment to your Hugging Face Space:
+
+```bash
+set -a
+source .env
+set +a
+openenv push . --repo-id sheetallll21/restaurant-manager-openenv
+```
+
+If the token is valid but push fails with a permissions error, the token likely exists but does not have write access to your `sheetallll21` namespace.
+
+## API surface
+
+Main endpoints:
+
+- `GET /` health/status
+- `GET /play` browser dashboard
+- `POST /reset` start a scenario
+- `POST /step` execute one action
+- `GET /state` fetch current observation
+- `GET /tasks` list scenario metadata
+- `GET /result` fetch final score/result snapshot
+
+Example:
 
 ```python
 import httpx
 
-# Start an episode
 r = httpx.post("http://localhost:7860/reset", json={"task_id": "weekend_rush"})
 state = r.json()["observation"]
 
-# Take a step
 action = {
     "staff_changes": {"Priya": True, "Sneha": True, "Arjun": True},
     "menu_changes": {"Butter Chicken": True},
-    "promotion_active": False
+    "price_adjustments": {"Paneer Tikka": 295},
+    "reorder_inventory": {"paneer": 2.0},
+    "promotion_active": False,
 }
+
 r = httpx.post("http://localhost:7860/step", json=action)
 print(r.json()["reward"], r.json()["done"])
 ```
 
-### Validate
-
-```bash
-pip install openenv-core
-openenv validate .
-```
-
----
-
-## Environment variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `HF_TOKEN` | **yes** | — | Hugging Face API token |
-| `API_BASE_URL` | no | `https://router.huggingface.co/v1` | LLM endpoint |
-| `MODEL_NAME` | no | `Qwen/Qwen2.5-72B-Instruct` | Model to use |
-| `TASK` | no | `all` | Task to run (`all`, `weekday_lunch`, `weekend_rush`, `crisis_shift`) |
-| `VERBOSE` | no | `false` | Print step-by-step debug info to stderr |
-
----
-
 ## Project structure
 
-```
-├── inference.py        ← competition submission script (must be in root)
-├── app.py              ← FastAPI server (OpenEnv HTTP interface)
-├── openenv.yaml        ← spec metadata
-├── Dockerfile
-├── requirements.txt
+```text
+.
+├── app.py
+├── client.py
+├── inference.py
+├── models.py
+├── openenv.yaml
 ├── README.md
-└── env/
-    ├── environment.py  ← simulation logic (step/reset/state)
-    ├── models.py       ← Pydantic types
-    ├── graders.py      ← deterministic scoring
-    ├── tasks.py        ← task configs
-    └── runner.py       ← episode runner utility
+├── ui/
+│   ├── app.js
+│   ├── index.html
+│   └── styles.css
+├── env/
+│   ├── environment.py
+│   ├── graders.py
+│   ├── models.py
+│   └── tasks.py
+├── server/
+│   ├── app.py
+│   ├── Dockerfile
+│   └── requirements.txt
+└── tests/
+    ├── test_environment.py
+    └── test_models.py
 ```
 
----
+## Submission checklist
 
-## Staff and menu reference
+Before submission, the high-signal checks are:
 
-**Staff:**
-Ravi (chef, 0.9 skill, ₹250/hr) · Priya (chef, 0.7, ₹200) · Amit (chef, 0.5, ₹150) · Sneha (server, 0.85, ₹150) · Vikram (server, 0.6, ₹120) · Meera (server, 0.7, ₹130) · Arjun (dishwasher, 0.8, ₹100) · Kavita (dishwasher, 0.5, ₹90)
+```bash
+openenv validate
+venv/bin/python -m pytest -q
+openenv push . --repo-id sheetallll21/restaurant-manager-openenv
+```
 
-**Menu:**
-Butter Chicken ₹350 · Paneer Tikka ₹280 · Dal Tadka ₹180 · Naan ₹60 · Gulab Jamun ₹120 · Mango Lassi ₹100
-
-Prices and wages are calibrated against Indian restaurant market data (Swiggy/Zomato range).
