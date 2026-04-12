@@ -160,10 +160,10 @@ To push this environment to your Hugging Face Space:
 set -a
 source .env
 set +a
-openenv push . --repo-id sheetallll21/restaurant-manager-openenv
+openenv push . --repo-id your_huggingface_username/restaurant-manager-openenv
 ```
 
-If the token is valid but push fails with a permissions error, the token likely exists but does not have write access to your `sheetallll21` namespace.
+If the token is valid but push fails with a permissions error, the token likely exists but does not have write access to your namespace.
 
 ## API surface
 
@@ -232,6 +232,6 @@ Before submission, the high-signal checks are:
 ```bash
 openenv validate
 venv/bin/python -m pytest -q
-openenv push . --repo-id sheetallll21/restaurant-manager-openenv
+openenv push . --repo-id your_huggingface_username/restaurant-manager-openenv
 ```
 
