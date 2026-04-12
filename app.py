@@ -74,6 +74,7 @@ app.add_middleware(
 
 if UI_DIR.exists():
     app.mount("/assets", StaticFiles(directory=UI_DIR), name="ui-assets")
+    app.mount("/web/assets", StaticFiles(directory=UI_DIR), name="ui-assets-web")
 
 
 def _ui_response() -> FileResponse:
@@ -88,8 +89,19 @@ async def play_ui_root():
     return _ui_response()
 
 
+@app.get("/web")
+@app.get("/web/")
+async def play_ui_web_root():
+    return _ui_response()
+
+
 @app.get("/play")
 async def play_ui():
+    return _ui_response()
+
+
+@app.get("/web/play")
+async def play_ui_web():
     return _ui_response()
 
 
@@ -104,9 +116,19 @@ async def status():
     }
 
 
+@app.get("/web/status")
+async def status_web():
+    return await status()
+
+
 @app.get("/health")
 async def health_check_alias():
     return {"status": "ok"}
+
+
+@app.get("/web/health")
+async def health_check_web():
+    return await health_check_alias()
 
 
 @app.post("/reset", response_model=ResetResponse)
