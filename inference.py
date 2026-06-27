@@ -29,16 +29,17 @@ from typing import Optional
 from openai import OpenAI
 
 from env.models import AgentAction, RestaurantState
+from env.tasks import TASK_SPECS
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-TASK_NAME = os.getenv("TASK", "all")   # "all" runs all 3 tasks
+TASK_NAME = os.getenv("TASK", "all")   # "all" runs all 8 tasks
 BENCHMARK = "restaurant-manager"
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
 
-ALL_TASKS = ["weekday_lunch", "weekend_rush", "crisis_shift"]
+ALL_TASKS = list(TASK_SPECS.keys())
 MAX_STEPS = 12
 MAX_SCORE = 100.0
 SUCCESS_THRESHOLD = 60.0

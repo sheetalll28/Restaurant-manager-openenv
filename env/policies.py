@@ -120,3 +120,68 @@ def simple_rule_policy(state: RestaurantState) -> AgentAction:
         action.promotion_active = True
 
     return action
+
+
+def profit_first_policy(state: RestaurantState) -> AgentAction:
+    """
+    Maximize margin by keeping labor lean and avoiding costly promotions.
+
+    Reorders only when stock is critically low and trims staff during soft demand.
+    """
+    action = AgentAction()
+    demand = state.demand_level
+
+    all_chefs = [member for member in state.staff if member.role == "chef"]
+    all_servers = [member for member in state.staff if member.role == "server"]
+    all_dishwashers = [member for member in state.staff if member.role == "dishwasher"]
+
+    if demand < 1.0:
+        best_chef = max(all_chefs, key=lambda member: member.skill_level)
+        best_server = max(all_servers, key=lambda member: member.skill_level)
+        for member in all_chefs:
+            action.staff_changes[member.name] = member.name == best_chef.name
+        for member in all_servers:
+            action.staff_changes[member.name] = member.name == best_server.name
+    elif demand >= 1.3:
+        for member in all_chefs + all_servers:
+            if not member.is_active:
+                action.staff_changes[member.name] = True
+
+    if not any(member.is_active for member in all_dishwashers):
+        best_dw = max(all_dishwashers, key=lambda member: member.skill_level)
+        action.staff_changes[best_dw.name] = True
+
+    for inv in state.inventory:
+        if inv.quantity < 3.0:
+            action.reorder_inventory[inv.name] = 8.0
+
+    return action
+
+
+def service_first_policy(state: RestaurantState) -> AgentAction:
+    """
+    Prioritize throughput and customer experience over labor cost.
+    """
+    action = AgentAction()
+
+    for member in state.staff:
+        if not member.is_active:
+            action.staff_changes[member.name] = True
+
+    for inv in state.inventory:
+        if inv.quantity < 8.0:
+            action.reorder_inventory[inv.name] = 12.0
+
+    inv_lookup = {inv.name: inv.quantity for inv in state.inventory}
+    for item in state.menu:
+        can_make = all(
+            inv_lookup.get(ingredient, 0) >= qty_needed * 3
+            for ingredient, qty_needed in item.ingredients.items()
+        )
+        if can_make and not item.available:
+            action.menu_changes[item.name] = True
+
+    if state.demand_level < 1.1:
+        action.promotion_active = True
+
+    return action

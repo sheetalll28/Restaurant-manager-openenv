@@ -47,7 +47,7 @@ Documentation = "https://github.com/sheetalll28/Restaurant-manager-openenv/blob/
 Repository = "https://github.com/sheetalll28/Restaurant-manager-openenv/tree/main"
 
 [tool.setuptools]
-packages = ["env", "server"]
+packages = ["agents", "env", "server"]
 
 [tool.setuptools.package-data]
 env = ["*.py"]
